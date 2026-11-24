@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>Sushi Split: cijene po komadu</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -86,6 +87,13 @@
   .venues .row { grid-template-columns: 1fr auto; }
   .empty { padding: 32px 0; color: var(--nori-soft); }
 
+  a { color: var(--p2); }
+  .venue-link { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+  .venue-link:hover { text-decoration-color: currentColor; }
+  .note { font-size: .875rem; color: var(--nori-soft); margin: 8px 0 0; max-width: 60ch; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .875rem; color: var(--nori-soft); max-width: 60ch; }
+  footer p { margin: 0 0 8px; }
+
   .leaflet-popup-content { font-family: "Figtree", system-ui, sans-serif; }
   .pin { width: 22px; height: 22px; border-radius: 50%; background: var(--c); border: 3px solid #fff;
          box-shadow: 0 0 0 1px var(--nori); }
@@ -109,6 +117,7 @@
     <header>
       <h1>Sushi Split</h1>
       <p>Cijene sushija u Splitu preračunate po komadu, da vidiš što se stvarno isplati. <span id="status"></span></p>
+      <p class="note">Neslužbena stranica, nije povezana s Woltom. Cijene mogu kasniti nekoliko sati, pa ih provjeri na Woltu prije narudžbe.</p>
     </header>
 
     <div class="belt" aria-label="Boje tanjura prema cijeni po komadu">
@@ -137,6 +146,11 @@
     </div>
 
     <ul class="list" id="list" aria-live="polite"></ul>
+
+    <footer>
+      <p>Neslužbeni, nekomercijalni hobi projekt. Nije povezan s Woltom ni s restoranima. Podaci se preuzimaju s javnih Wolt stranica restorana nekoliko puta dnevno i mogu biti netočni ili zastarjeli. Broj komada označen s ≈ je procjena. Za točnu cijenu i narudžbu otvori restoran na Woltu.</p>
+      <p>Vlasnik si restorana ili predstavnik Wolta i želiš da se podaci uklone? <a href="https://github.com/BrunoRadic/sushi-split/issues/new">Javi se ovdje</a> i uklonit ćemo ih.</p>
+    </footer>
   </main>
   <aside><div id="map" role="region" aria-label="Karta restorana"></div></aside>
 </div>
@@ -147,6 +161,8 @@ const state = { tab: "best", type: "", fish: true, venue: null, venues: [], item
 const $ = s => document.querySelector(s);
 const eur = n => n == null ? "–" : Number(n).toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const woltUrl = slug => `https://wolt.com/hr/hrv/split/restaurant/${encodeURIComponent(slug)}`;
+const woltLink = (slug, text) => `<a class="venue-link" href="${woltUrl(slug)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 const TYPE_HR = { maki: "maki", roll: "roll", nigiri: "nigiri", sashimi: "sashimi", temaki: "temaki", set: "set", ostalo: "ostalo" };
 
 function plateColor(p) {
@@ -190,7 +206,7 @@ function drawMarkers() {
     L.marker([v.lat, v.lon], { icon, title: v.name }).addTo(map)
       .bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.address)}<br>Najjeftinije: ${eur(v.min_eur_per_piece)}/kom` +
                  (v.deals ? `<br>${v.deals} akcija, do −${v.max_discount}%` : "") +
-                 `<br><a href="#" data-venue="${esc(v.slug)}">Prikaži meni</a>`);
+                 `<br><a href="#" data-venue="${esc(v.slug)}">Prikaži meni</a><br><a href="${woltUrl(v.slug)}" target="_blank" rel="noopener">Otvori na Woltu</a>`);
   });
   map.on("popupopen", e => {
     const a = e.popup.getElement().querySelector("[data-venue]");
@@ -209,7 +225,7 @@ function itemRow(it) {
     </div>
     <div>
       <div class="name">${esc(it.name)}${it.discount_pct ? `<span class="badge">−${it.discount_pct}%</span>` : ""}</div>
-      <div class="meta">${esc(it.venue_name)}, ${pieces}${TYPE_HR[it.type] || it.type}</div>
+      <div class="meta">${woltLink(it.venue_slug, it.venue_name)}, ${pieces}${TYPE_HR[it.type] || it.type}</div>
       ${it.description ? `<div class="meta">${esc(it.description)}</div>` : ""}
     </div>
     <div class="price"><span class="num">${eur(it.price_eur)}</span>${it.original_eur ? `<s>${eur(it.original_eur)}</s>` : ""}</div>
@@ -221,7 +237,7 @@ function venueRow(v) {
   return `<li class="row" tabindex="0" data-venue="${esc(v.slug)}">
     <div>
       <div class="name">${esc(v.name)}${v.deals ? `<span class="badge">${v.deals} akcija</span>` : ""}</div>
-      <div class="meta">${esc(v.address)}, ocjena ${v.rating ?? "–"}, ${v.sushi_items} sushi stavki, ${cover}% s poznatim brojem komada</div>
+      <div class="meta">${woltLink(v.slug, "Otvori na Woltu")}, ${esc(v.address)}, ocjena ${v.rating ?? "–"}, ${v.sushi_items} sushi stavki, ${cover}% s poznatim brojem komada</div>
     </div>
     <div class="price"><span class="num">${eur(v.min_eur_per_piece)}</span><span class="meta">najjeftinije/kom</span></div>
   </li>`;
@@ -284,7 +300,10 @@ function activate(li) {
   if (li.dataset.venue) { setVenue(li.dataset.venue); setTab("best"); }
   else if (li.dataset.id) toggleHistory(li);
 }
-$("#list").addEventListener("click", e => { const li = e.target.closest(".row"); if (li) activate(li); });
+$("#list").addEventListener("click", e => {
+  if (e.target.closest("a")) return;  // linkovi na Wolt rade normalno
+  const li = e.target.closest(".row"); if (li) activate(li);
+});
 $("#list").addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches(".row")) { e.preventDefault(); activate(e.target); }
 });
