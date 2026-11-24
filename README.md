@@ -1,18 +1,19 @@
 # Sushi Split
 
-Cijene sushija u Splitu s Wolta, preračunate po komadu. Radi samo na GitHubu:
-GitHub Actions 4x dnevno povuče podatke u `docs/data/`, a GitHub Pages servira stranicu.
+Cijene sushija u Splitu s Wolta, preračunate po komadu. Mac 4x dnevno povuče podatke
+u `docs/data/` i pusha ih, a GitHub Pages servira stranicu.
+(Wolt blokira GitHub Actions s 429, pa scrape ide s kućne IP adrese.)
 
 ## Postavljanje (jednom)
 
 1. Napravi **public** repo i pushaj ovaj folder.
 2. Settings → Pages → Source: *Deploy from a branch*, Branch: `main`, folder `/docs` → Save.
-3. Actions → **Scrape** → *Run workflow* (prvo punjenje podataka).
-4. Za minutu-dvije stranica je na `https://<tvoj-username>.github.io/<ime-repoa>/`.
+3. Na Macu: `./scripts/install-mac.sh` (repo ne smije biti u Desktop/Documents/Downloads).
+4. Za minutu-dvije nakon prvog pusha stranica je na `https://<tvoj-username>.github.io/<ime-repoa>/`.
 
 ## Broj komada
 
-Upiši u `scraper/overrides.csv` i pushaj, workflow se pokrene sam:
+Upiši u `scraper/overrides.csv`, pa pokreni `./scripts/update.sh`:
 ```
 venue,name,pieces,type
 sora-sushi-bar,type:roll,8,
@@ -31,9 +32,8 @@ python3 scraper/build.py --offline    # ponovi obradu iz scraper/raw/ bez novih 
 cd docs && python3 -m http.server     # stranica na http://localhost:8000
 ```
 
-## Ako Wolt blokira GitHub Actions
+## Ručno ažuriranje
 
-Ako u logu workflowa vidiš `ERR` za sve restorane (403/429), pokreći scrape s Maca i pushaj:
 ```
-python3 scraper/build.py && git add docs/data && git commit -m "Podaci" && git push
+./scripts/update.sh
 ```

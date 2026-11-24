@@ -1,12 +1,13 @@
 """Wolt sushi scraper: povlači meni za listu restorana i računa €/kom."""
 from __future__ import annotations
-import csv, json, os, re, sys, time, urllib.request
+import csv, json, os, re, sys, time, urllib.error, urllib.request
 
 LAT, LON = 43.5116, 16.4396  # Split
 LIST_URL = f"https://consumer-api.wolt.com/v1/pages/venue-list/category-sushi?lat={LAT}&lon={LON}"
 URL ="https://consumer-api.wolt.com/consumer-api/consumer-assortment/v1/venues/slug/{}/assortment"
 RAW_DIR = os.environ.get("RAW_DIR", "raw")
-HEADERS = {"User-Agent": "Mozilla/5.0", "Accept-Language": "hr"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+           "Accept": "application/json", "Accept-Language": "hr"}
 
 KOM_RE = re.compile(r"(\d+)\s*(?:kom|komada|pcs|pieces)", re.I)
 LEAD_RE = re.compile(r"^\s*(\d+)\s*x?\b", re.I)
@@ -27,10 +28,19 @@ def pieces(desc: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def get(url: str) -> dict:
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.load(r)
+def get(url: str, tries: int = 3) -> dict:
+    """GET s ponovnim pokušajem na 429/5xx (poštuje Retry-After)."""
+    for attempt in range(tries):
+        req = urllib.request.Request(url, headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503) or attempt == tries - 1:
+                raise
+            wait = int(e.headers.get("Retry-After") or 10 * (attempt + 1))
+            print(f"    {e.code}, čekam {wait}s...", file=sys.stderr)
+            time.sleep(min(wait, 60))
 
 
 def discover(data: dict) -> list[dict]:
