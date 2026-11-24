@@ -1,0 +1,41 @@
+name: Scrape
+
+on:
+  schedule:
+    - cron: "17 5,11,17,23 * * *"   # 4x dnevno (UTC); minuta 17 jer su :00 termini zagušeni
+  workflow_dispatch:                # ručno pokretanje iz Actions taba
+  push:
+    paths: ["scraper/**"]           # nakon promjene parsera ili overrides.csv
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Povuci podatke s Wolta
+        run: python scraper/build.py
+
+      - name: Spremi promjene
+        run: |
+          git config user.name "sushi-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo "Nema promjena."
+          else
+            git commit -m "Podaci $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git push
+          fi

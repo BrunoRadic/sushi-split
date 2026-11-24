@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sushi Split: cijene po komadu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --rice: #EEF1EC;       /* pozadina */
+    --nori: #1E2B26;       /* tekst */
+    --nori-soft: #5B6A63;  /* sekundarni tekst */
+    --line: #D3DAD3;
+    --card: #F8FAF7;
+    /* boje tanjura (kaiten): jeftino → skupo */
+    --p1: #3E8E5A;  /* zeleni */
+    --p2: #2F6DB5;  /* plavi */
+    --p3: #E2B23A;  /* žuti */
+    --p4: #C8323A;  /* crveni */
+    --p5: #3A3530;  /* crni */
+    --deal: #C8323A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--rice); color: var(--nori);
+    font: 400 16px/1.5 "Figtree", system-ui, sans-serif;
+  }
+  h1, h2, .num { font-family: "Bricolage Grotesque", system-ui, sans-serif; }
+  :focus-visible { outline: 3px solid var(--p2); outline-offset: 2px; }
+
+  .wrap { display: grid; grid-template-columns: minmax(0, 820px) minmax(360px, 1fr); min-height: 100vh; }
+  main { padding: 28px clamp(16px, 4vw, 48px) 48px; max-width: 780px; }
+  aside { position: sticky; top: 0; height: 100vh; border-left: 1px solid var(--line); }
+  #map { height: 100%; }
+  .leaflet-tile-pane { filter: saturate(.35) brightness(1.04); } /* prigušena karta da se pinovi ističu */
+
+  header h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800; line-height: 1; margin: 0; letter-spacing: -0.02em; }
+  header p { margin: 10px 0 0; color: var(--nori-soft); max-width: 56ch; }
+  #status { font-size: .875rem; }
+
+  /* legenda tanjura — boja nosi informaciju o €/kom */
+  .belt { display: flex; gap: 14px; flex-wrap: wrap; margin: 22px 0 26px; padding: 12px 14px;
+          background: var(--card); border: 1px solid var(--line); border-radius: 999px; font-size: .875rem; }
+  .belt span { display: inline-flex; align-items: center; gap: 6px; }
+  .belt i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+
+  nav.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--nori); }
+  nav.tabs button { font: 600 1rem "Figtree", system-ui, sans-serif; background: none; border: 0; padding: 10px 14px; cursor: pointer;
+                    color: var(--nori-soft); border-radius: 8px 8px 0 0; }
+  nav.tabs button[aria-selected="true"] { background: var(--nori); color: var(--rice); }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 8px; }
+  .chip { font: 500 .9rem "Figtree", system-ui, sans-serif; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+          background: var(--card); color: var(--nori); cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--nori); border-color: var(--nori); color: var(--rice); }
+  .venue-filter { margin-left: auto; font-size: .9rem; color: var(--nori-soft); }
+  .venue-filter button { border: 0; background: none; color: var(--p2); cursor: pointer; font: inherit; text-decoration: underline; }
+
+  ul.list { list-style: none; padding: 0; margin: 8px 0 0; }
+  .row { display: grid; grid-template-columns: 76px 1fr auto; gap: 16px; align-items: center;
+         padding: 14px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .row:hover .name { text-decoration: underline; }
+
+  /* tanjur: dvostruki prsten kao kaiten tanjur */
+  .plate { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+           background: var(--c); box-shadow: inset 0 0 0 5px var(--c), inset 0 0 0 7px rgba(255,255,255,.55); }
+  .plate .num { font-size: 1.15rem; font-weight: 800; line-height: 1; text-align: center; }
+  .plate small { display: block; font: 500 .65rem "Figtree", system-ui, sans-serif; opacity: .9; margin-top: 2px; }
+  .plate.none { --c: var(--line); color: var(--nori-soft); }
+
+  .name { font-weight: 600; }
+  .meta { color: var(--nori-soft); font-size: .9rem; }
+  .est { border-bottom: 1px dotted currentColor; cursor: help; }
+  .price { text-align: right; white-space: nowrap; }
+  .price .num { font-size: 1.15rem; font-weight: 800; display: block; }
+  .price s { color: var(--nori-soft); font-size: .85rem; }
+  .badge { display: inline-block; background: var(--deal); color: #fff; font-weight: 600; font-size: .8rem;
+           padding: 1px 8px; border-radius: 999px; margin-left: 6px; }
+
+  .history { grid-column: 2 / -1; font-size: .875rem; color: var(--nori-soft); margin: 0; padding: 0; list-style: none; }
+  .history li { padding: 2px 0; }
+
+  .venues .row { grid-template-columns: 1fr auto; }
+  .empty { padding: 32px 0; color: var(--nori-soft); }
+
+  .leaflet-popup-content { font-family: "Figtree", system-ui, sans-serif; }
+  .pin { width: 22px; height: 22px; border-radius: 50%; background: var(--c); border: 3px solid #fff;
+         box-shadow: 0 0 0 1px var(--nori); }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; }
+    aside { position: static; height: 260px; border-left: 0; border-bottom: 1px solid var(--line); order: -1; }
+    .row { grid-template-columns: 60px 1fr auto; gap: 12px; }
+    .plate { width: 56px; height: 56px; }
+    .plate .num { font-size: 1rem; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .row { transition: background-color .15s; }
+    .row:hover { background: var(--card); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main>
+    <header>
+      <h1>Sushi Split</h1>
+      <p>Cijene sushija u Splitu preračunate po komadu, da vidiš što se stvarno isplati. <span id="status"></span></p>
+    </header>
+
+    <div class="belt" aria-label="Boje tanjura prema cijeni po komadu">
+      <span><i style="background:var(--p1)"></i>do 1 €</span>
+      <span><i style="background:var(--p2)"></i>1–1,50 €</span>
+      <span><i style="background:var(--p3)"></i>1,50–2 €</span>
+      <span><i style="background:var(--p4)"></i>2–3 €</span>
+      <span><i style="background:var(--p5)"></i>preko 3 €</span>
+    </div>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="best" aria-selected="true">Po komadu</button>
+      <button role="tab" data-tab="deals" aria-selected="false">Akcije</button>
+      <button role="tab" data-tab="venues" aria-selected="false">Restorani</button>
+    </nav>
+
+    <div class="filters" id="filters">
+      <button class="chip" data-type="" aria-pressed="true">Sve</button>
+      <button class="chip" data-type="maki" aria-pressed="false">Maki</button>
+      <button class="chip" data-type="roll" aria-pressed="false">Rollovi</button>
+      <button class="chip" data-type="nigiri" aria-pressed="false">Nigiri</button>
+      <button class="chip" data-type="sashimi" aria-pressed="false">Sashimi</button>
+      <button class="chip" data-type="set" aria-pressed="false">Setovi</button>
+      <button class="chip" id="fish" aria-pressed="true">Samo s ribom</button>
+      <span class="venue-filter" id="venueFilter" hidden></span>
+    </div>
+
+    <ul class="list" id="list" aria-live="polite"></ul>
+  </main>
+  <aside><div id="map" role="region" aria-label="Karta restorana"></div></aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const state = { tab: "best", type: "", fish: true, venue: null, venues: [], items: [], history: null };
+const $ = s => document.querySelector(s);
+const eur = n => n == null ? "–" : Number(n).toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const TYPE_HR = { maki: "maki", roll: "roll", nigiri: "nigiri", sashimi: "sashimi", temaki: "temaki", set: "set", ostalo: "ostalo" };
+
+function plateColor(p) {
+  if (p == null) return null;
+  if (p < 1) return "var(--p1)";
+  if (p < 1.5) return "var(--p2)";
+  if (p < 2) return "var(--p3)";
+  if (p < 3) return "var(--p4)";
+  return "var(--p5)";
+}
+
+async function load(name) {
+  const r = await fetch(`data/${name}.json`, { cache: "no-cache" });
+  if (!r.ok) throw new Error(`${r.status} data/${name}.json`);
+  return r.json();
+}
+
+/* filtriranje radi u pregledniku: podaci su mali (nekoliko stotina stavki) */
+function queryItems() {
+  let xs = state.items;
+  if (state.tab === "deals") xs = xs.filter(i => i.discount_pct > 0);
+  else xs = xs.filter(i => i.type !== "ostalo" && i.eur_per_piece != null);
+  if (state.type) xs = xs.filter(i => i.type === state.type);
+  if (state.fish) xs = xs.filter(i => i.fish);
+  if (state.venue) xs = xs.filter(i => i.venue_slug === state.venue);
+  const key = state.tab === "deals" ? (a, b) => b.discount_pct - a.discount_pct || a.price_eur - b.price_eur
+                                    : (a, b) => a.eur_per_piece - b.eur_per_piece || a.price_eur - b.price_eur;
+  return xs.slice().sort(key).slice(0, 80);
+}
+
+/* --- karta --- */
+const map = L.map("map", { scrollWheelZoom: false }).setView([43.5095, 16.445], 14);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
+}).addTo(map);
+
+function drawMarkers() {
+  state.venues.forEach(v => {
+    const c = plateColor(v.min_eur_per_piece) || "var(--nori-soft)";
+    const icon = L.divIcon({ className: "", html: `<div class="pin" style="--c:${c}"></div>`, iconSize: [22, 22] });
+    L.marker([v.lat, v.lon], { icon, title: v.name }).addTo(map)
+      .bindPopup(`<b>${esc(v.name)}</b><br>${esc(v.address)}<br>Najjeftinije: ${eur(v.min_eur_per_piece)}/kom` +
+                 (v.deals ? `<br>${v.deals} akcija, do −${v.max_discount}%` : "") +
+                 `<br><a href="#" data-venue="${esc(v.slug)}">Prikaži meni</a>`);
+  });
+  map.on("popupopen", e => {
+    const a = e.popup.getElement().querySelector("[data-venue]");
+    a.addEventListener("click", ev => { ev.preventDefault(); setVenue(a.dataset.venue); setTab("best"); });
+  });
+}
+
+/* --- liste --- */
+function itemRow(it) {
+  const c = plateColor(it.eur_per_piece);
+  const est = it.pieces_src === "pravilo" ? ` <span class="est" title="Procjena prema tipičnom broju komada u ovom restoranu">≈</span>` : "";
+  const pieces = it.pieces ? `${it.pieces} kom${est}, ` : "";
+  return `<li class="row" tabindex="0" data-id="${esc(it.id)}">
+    <div class="plate ${c ? "" : "none"}" style="${c ? `--c:${c}` : ""}">
+      <div class="num">${it.eur_per_piece != null ? Number(it.eur_per_piece).toLocaleString("hr-HR", { minimumFractionDigits: 2 }) : "?"}<small>€/kom</small></div>
+    </div>
+    <div>
+      <div class="name">${esc(it.name)}${it.discount_pct ? `<span class="badge">−${it.discount_pct}%</span>` : ""}</div>
+      <div class="meta">${esc(it.venue_name)}, ${pieces}${TYPE_HR[it.type] || it.type}</div>
+      ${it.description ? `<div class="meta">${esc(it.description)}</div>` : ""}
+    </div>
+    <div class="price"><span class="num">${eur(it.price_eur)}</span>${it.original_eur ? `<s>${eur(it.original_eur)}</s>` : ""}</div>
+  </li>`;
+}
+
+function venueRow(v) {
+  const cover = v.sushi_items ? Math.round(100 * v.with_pieces / v.sushi_items) : 0;
+  return `<li class="row" tabindex="0" data-venue="${esc(v.slug)}">
+    <div>
+      <div class="name">${esc(v.name)}${v.deals ? `<span class="badge">${v.deals} akcija</span>` : ""}</div>
+      <div class="meta">${esc(v.address)}, ocjena ${v.rating ?? "–"}, ${v.sushi_items} sushi stavki, ${cover}% s poznatim brojem komada</div>
+    </div>
+    <div class="price"><span class="num">${eur(v.min_eur_per_piece)}</span><span class="meta">najjeftinije/kom</span></div>
+  </li>`;
+}
+
+async function render() {
+  const list = $("#list");
+  $("#filters").hidden = state.tab === "venues";
+  const vf = $("#venueFilter");
+  if (state.venue) {
+    const v = state.venues.find(x => x.slug === state.venue);
+    vf.hidden = false;
+    vf.innerHTML = `${esc(v?.name || state.venue)}: <button id="clearVenue">svi restorani</button>`;
+    $("#clearVenue").onclick = () => setVenue(null);
+  } else vf.hidden = true;
+
+  try {
+    if (state.tab === "venues") {
+      list.className = "list venues";
+      list.innerHTML = state.venues.map(venueRow).join("");
+      return;
+    }
+    list.className = "list";
+    const items = queryItems();
+    list.innerHTML = items.length ? items.map(itemRow).join("")
+      : `<li class="empty">${state.tab === "deals" ? "Trenutno nema akcija za ovaj filter." : "Nema stavki s poznatim brojem komada za ovaj filter. Probaj drugi tip ili isključi „Samo s ribom”."}</li>`;
+  } catch (e) {
+    list.innerHTML = `<li class="empty">Podaci se nisu učitali (${esc(e.message)}). Osvježi stranicu.</li>`;
+  }
+}
+
+async function toggleHistory(li) {
+  const open = li.querySelector(".history");
+  if (open) return open.remove();
+  state.history ??= await load("history");
+  const h = state.history[li.dataset.id] || [];
+  const fmt = d => new Date(d).toLocaleDateString("hr-HR", { day: "numeric", month: "short", year: "numeric" });
+  li.insertAdjacentHTML("beforeend", `<ul class="history">${
+    h.slice().reverse().map(([d, p, o]) => `<li>${fmt(d)}: ${eur(p / 100)}${o ? ` (umjesto ${eur(o / 100)})` : ""}</li>`).join("")
+  }</ul>`);
+}
+
+/* --- događaji --- */
+function setTab(t) {
+  state.tab = t;
+  document.querySelectorAll("[role=tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  render();
+}
+function setVenue(slug) { state.venue = slug; render(); }
+
+document.querySelectorAll("[role=tab]").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+document.querySelectorAll("[data-type]").forEach(b => b.onclick = () => {
+  state.type = b.dataset.type;
+  document.querySelectorAll("[data-type]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  render();
+});
+$("#fish").onclick = e => { state.fish = !state.fish; e.target.setAttribute("aria-pressed", state.fish); render(); };
+
+function activate(li) {
+  if (li.dataset.venue) { setVenue(li.dataset.venue); setTab("best"); }
+  else if (li.dataset.id) toggleHistory(li);
+}
+$("#list").addEventListener("click", e => { const li = e.target.closest(".row"); if (li) activate(li); });
+$("#list").addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches(".row")) { e.preventDefault(); activate(e.target); }
+});
+
+(async () => {
+  try {
+    const [venues, items, meta] = await Promise.all([load("venues"), load("items"), load("meta")]);
+    Object.assign(state, { venues, items });
+    drawMarkers();
+    $("#status").textContent = `Zadnje ažuriranje: ${new Date(meta.updated_at).toLocaleString("hr-HR", { dateStyle: "short", timeStyle: "short" })}.`;
+    render();
+  } catch (e) {
+    $("#list").innerHTML = `<li class="empty">Podaci se nisu učitali (${esc(e.message)}). Pokreni workflow „Scrape” na GitHubu ili osvježi stranicu.</li>`;
+  }
+})();
+</script>
+</body>
+</html>
